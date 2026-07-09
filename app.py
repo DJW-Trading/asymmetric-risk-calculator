@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 def calculate_asymmetric_position(
     account_balance: float,
@@ -43,6 +44,10 @@ st.set_page_config(page_title="Asymmetric Risk Calculator", page_icon="📈", la
 st.title("📈 Asymmetric Position Sizing Calculator")
 st.markdown("Enforce mathematical risk discipline. Define your downside first to maximize upside.")
 
+# Initialize session state for trade history tracking
+if "trade_history" not in st.session_state:
+    st.session_state.trade_history = []
+
 # Layout: Two input columns
 col1, col2 = st.columns(2)
 
@@ -54,6 +59,7 @@ with col1:
 
 with col2:
     st.subheader("Trade Setup")
+    ticker = st.text_input("Stock Ticker Symbol", value="AAPL").upper()
     entry = st.number_input("Stock Entry Price ($)", min_value=0.01, value=100.0, step=1.0)
     stop = st.number_input("Stop-Loss Price ($)", min_value=0.00, value=95.0, step=1.0)
 
@@ -69,19 +75,57 @@ try:
     kpi2.metric(label="🎯 Profit Target", value=f"${plan['target_price']:.2f}")
     kpi3.metric(label="💰 Capital Required", value=f"${plan['capital_needed']:.2f}")
     
-    st.markdown("### Detailed Trade Plan Breakdown")
-    
-    # Secondary metrics display
-    detail1, detail2, detail3 = st.columns(3)
-    detail1.write(f"**Max Allowed Risk:** ${plan['max_risk']:.2f}")
-    detail2.write(f"**Actual Position Risk:** ${plan['actual_risk']:.2f}")
-    detail3.write(f"**Risk Per Share:** ${plan['risk_per_share']:.2f}")
-    
     # High-impact outcome warning or validation
     if plan['shares'] == 0:
         st.warning("Position size is 0. Your defined stop-loss risk per share exceeds your total allowed account risk.")
     else:
         st.success(f"🟩 **Asymmetric Profile:** Risking **${plan['actual_risk']:.2f}** to potentially make **${plan['potential_profit']:.2f}**.")
+    
+    # Button to save trade to log
+    st.markdown("### Action")
+    if st.button("📝 Log Trade to History", use_container_width=True):
+        new_trade = {
+            "Ticker": ticker,
+            "Entry Price ($)": entry,
+            "Stop Loss ($)": stop,
+            "Target Price ($)": plan["target_price"],
+            "Shares": plan["shares"],
+            "Capital Required ($)": plan["capital_needed"],
+            "Risk Imcurred ($)": plan["actual_risk"],
+            "Potential Profit ($)": plan["potential_profit"]
+        }
+        st.session_state.trade_history.append(new_trade)
+        st.toast(f"Logged setup for {ticker}!", icon="✅")
 
 except ValueError as err:
     st.error(f"❌ Input Error: {err}")
+
+# --- TRADE HISTORY & CSV EXPORT SECTION ---
+st.markdown("---")
+st.subheader("📝 Trade Log & History")
+
+if st.session_state.trade_history:
+    # Convert list of dicts to DataFrame for clean display
+    df_history = pd.DataFrame(st.session_state.trade_history)
+    
+    # Display the log interactive data table
+    st.dataframe(df_history, use_container_width=True, hide_index=True)
+    
+    # CSV conversion logic
+    csv_data = df_history.to_csv(index=False).encode('utf-8')
+    
+    col_dl, col_clr = st.columns(2)
+    with col_dl:
+        st.download_button(
+            label="📥 Export Trade History to CSV",
+            data=csv_data,
+            file_name="asymmetric_trade_history.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    with col_clr:
+        if st.button("🗑️ Clear Log History", use_container_width=True):
+            st.session_state.trade_history = []
+            st.rerun()
+else:
+    st.info("No trades logged in this session yet. Click 'Log Trade to History' above to start tracking.")
